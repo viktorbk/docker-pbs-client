@@ -1,6 +1,7 @@
 services:
   pbs-client:
     build: .
+    platform: linux/amd64
     container_name: pbs-client
     restart: unless-stopped
     hostname: macbackup

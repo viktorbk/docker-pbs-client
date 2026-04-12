@@ -31,44 +31,23 @@ const DOCKERFILE = `FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install proxmox-backup-client
-# On amd64: use the official Proxmox apt repo
-# On arm64: build from source (Proxmox only publishes amd64 packages)
+# Install minimal dependencies + proxmox-backup-client
+# Note: Proxmox only publishes amd64 packages. On Apple Silicon,
+# set platform: linux/amd64 in docker-compose.yml (uses Rosetta emulation)
 RUN apt-get update && \\
-    apt-get install -y --no-install-recommends ca-certificates wget cron && \\
-    ARCH=$(dpkg --print-architecture) && \\
-    if [ "$ARCH" = "amd64" ]; then \\
-        apt-get install -y --no-install-recommends gnupg && \\
-        wget -qO /usr/share/keyrings/proxmox-release-bookworm.gpg \\
-            https://enterprise.proxmox.com/debian/proxmox-release-bookworm.gpg && \\
-        echo "deb [signed-by=/usr/share/keyrings/proxmox-release-bookworm.gpg] http://download.proxmox.com/debian/pbs-client bookworm main" \\
-            > /etc/apt/sources.list.d/pbs-client.list && \\
-        apt-get update && \\
-        apt-get install -y --no-install-recommends proxmox-backup-client && \\
-        apt-get purge -y --auto-remove gnupg; \\
-    elif [ "$ARCH" = "arm64" ]; then \\
-        apt-get install -y --no-install-recommends \\
-            build-essential \\
-            cargo \\
-            rustc \\
-            libsgutils2-dev \\
-            libacl1-dev \\
-            libfuse3-dev \\
-            libssl-dev \\
-            pkg-config \\
-            git && \\
-        git clone --depth 1 --branch v3.3.2 https://git.proxmox.com/git/proxmox-backup.git /tmp/pbs && \\
-        cd /tmp/pbs && \\
-        cargo build --release --package proxmox-backup-client && \\
-        cp target/release/proxmox-backup-client /usr/local/bin/ && \\
-        cd / && rm -rf /tmp/pbs /root/.cargo && \\
-        apt-get purge -y --auto-remove build-essential cargo rustc \\
-            libsgutils2-dev libacl1-dev libfuse3-dev libssl-dev pkg-config git; \\
-    else \\
-        echo "Unsupported architecture: $ARCH" && exit 1; \\
-    fi && \\
-    apt-get purge -y --auto-remove wget && \\
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \\
+        ca-certificates \\
+        wget \\
+        gnupg \\
+        cron \\
+    && wget -qO /usr/share/keyrings/proxmox-release-bookworm.gpg \\
+        https://enterprise.proxmox.com/debian/proxmox-release-bookworm.gpg \\
+    && echo "deb [signed-by=/usr/share/keyrings/proxmox-release-bookworm.gpg] http://download.proxmox.com/debian/pbs-client bookworm main" \\
+        > /etc/apt/sources.list.d/pbs-client.list \\
+    && apt-get update \\
+    && apt-get install -y --no-install-recommends proxmox-backup-client \\
+    && apt-get purge -y --auto-remove wget gnupg \\
+    && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /root/.config/proxmox-backup
 
@@ -78,14 +57,16 @@ RUN chmod +x /usr/local/bin/backup.sh
 CMD ["cron", "-f"]
 `;
 
-function makeCompose(volumes, hostname, cron, tz) {
+function makeCompose(volumes, hostname, cron, tz, needsAmd64) {
   const volumeLines = volumes
     .map((v) => `      - ${v.host}:/backup-source/${v.name}:ro`)
     .join("\n");
 
+  const platformLine = needsAmd64 ? "\n    platform: linux/amd64" : "";
+
   return `services:
   pbs-client:
-    build: .
+    build: .${platformLine}
     container_name: pbs-client
     restart: unless-stopped
     hostname: ${hostname}
@@ -247,6 +228,17 @@ async function main() {
     console.log(`  Final excludes: ${excludes.join(", ")}`);
   }
 
+  // Platform detection
+  const arch = process.arch; // "arm64" on Apple Silicon, "x64" on Intel
+  let needsAmd64 = arch === "arm64";
+  if (needsAmd64) {
+    console.log(`\n  Detected ARM64 (Apple Silicon). Proxmox only publishes amd64 packages.`);
+    console.log(`  The container will run via Rosetta emulation.`);
+    console.log(`  Make sure Rosetta is enabled: Docker Desktop > Settings > General > "Use Rosetta"`);
+    const confirm = await ask("  Add platform: linux/amd64 to docker-compose.yml? (y/n)", "y");
+    needsAmd64 = confirm.toLowerCase() !== "n";
+  }
+
   // Options
   const hostname = await ask("\nBackup hostname (shows in PBS UI)", "macbackup");
   const cron = await ask("Backup schedule (cron)", "0 2 * * *");
@@ -256,7 +248,7 @@ async function main() {
   console.log("\nGenerating files...\n");
 
   writeFile("Dockerfile", DOCKERFILE);
-  writeFile("docker-compose.yml", makeCompose(volumes, hostname, cron, tz));
+  writeFile("docker-compose.yml", makeCompose(volumes, hostname, cron, tz, needsAmd64));
   writeFile("backup.sh", makeBackupScript(volumes, hostname, excludes));
   writeFile(".env", makeEnv(server, user, password, datastore, fingerprint, cron, tz));
   writeFile(".env.example", makeEnv(server, user, "your-password-here", datastore, "AA:BB:CC:...", cron, tz));
