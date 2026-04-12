@@ -1,15 +1,23 @@
 {
   "name": "docker-pbs-client",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Set up a minimal Debian Docker container as a Proxmox Backup Client",
   "bin": {
     "docker-pbs-client": "bin/cli.js"
   },
-  "keywords": ["proxmox", "backup", "pbs", "docker", "debian"],
+  "keywords": [
+    "proxmox",
+    "backup",
+    "pbs",
+    "docker",
+    "debian"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/viktorbk/docker-pbs-client"
   },
-  "files": ["bin/"]
+  "files": [
+    "bin/"
+  ]
 }
