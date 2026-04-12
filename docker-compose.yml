@@ -1,0 +1,37 @@
+services:
+  pbs-client:
+    build: .
+    container_name: pbs-client
+    restart: unless-stopped
+    hostname: macbackup
+    environment:
+      - PBS_REPOSITORY=${PBS_USER}@${PBS_SERVER}:${PBS_DATASTORE}
+      - PBS_PASSWORD=${PBS_PASSWORD}
+      - PBS_FINGERPRINT=${PBS_FINGERPRINT}
+      - XDG_RUNTIME_DIR=/run/pbs
+      - BACKUP_CRON=${BACKUP_CRON:-0 2 * * *}
+      - TZ=${TZ:-Europe/Oslo}
+    volumes:
+      # === ADD YOUR BACKUP SOURCES BELOW ===
+      # Mount directories you want to back up as read-only under /backup-source/
+      # Examples:
+      - /Users/viktor/prjs:/backup-source/home:ro
+      #   - /Volumes/RED4TB/important:/backup-source/important:ro
+      # Then update backup.sh archive names to match.
+
+      # Persistent PBS client config (encryption keys, auth)
+      - pbs-config:/root/.config/proxmox-backup
+      # Backup logs
+      - pbs-logs:/var/log/pbs-backup
+    entrypoint: >
+      /bin/sh -c "
+        mkdir -p /var/log/pbs-backup &&
+        mkdir -p /run/pbs && chmod 700 /run/pbs &&
+        env | grep -E '^(PBS_|XDG_|TZ=)' > /etc/environment &&
+        echo \"$$BACKUP_CRON . /etc/environment; /usr/local/bin/backup.sh >> /var/log/pbs-backup/backup.log 2>&1\" | crontab - &&
+        cron -f
+      "
+
+volumes:
+  pbs-config:
+  pbs-logs:
