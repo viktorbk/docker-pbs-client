@@ -4,7 +4,7 @@ services:
     platform: linux/amd64
     container_name: pbs-client
     restart: unless-stopped
-    hostname: macbackup
+    hostname: macbackupM4
     environment:
       - PBS_REPOSITORY=${PBS_USER}@${PBS_SERVER}:${PBS_DATASTORE}
       - PBS_PASSWORD=${PBS_PASSWORD}
@@ -16,7 +16,7 @@ services:
       # === ADD YOUR BACKUP SOURCES BELOW ===
       # Mount directories you want to back up as read-only under /backup-source/
       # Examples:
-      - /Users/viktor/prjs:/backup-source/home:ro
+      - /Users/vikkjart/prjs:/backup-source/home:ro
       #   - /Volumes/RED4TB/important:/backup-source/important:ro
       # Then update backup.sh archive names to match.
 
