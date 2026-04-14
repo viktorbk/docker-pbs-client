@@ -26,7 +26,7 @@ echo "Source: ${FILE_COUNT} files, ${SOURCE_SIZE} total"
 proxmox-backup-client backup \
     home.pxar:"${SOURCE}" \
     --repository "${PBS_REPOSITORY}" \
-    --backup-id macbackup \
+    --backup-id macbackupM4 \
     --exclude 'lost+found' \
     --exclude '.DS_Store' \
     --exclude '.Spotlight-V100' \
@@ -51,7 +51,7 @@ if [ ${RESULT} -eq 0 ]; then
 
     # Prune old snapshots
     echo "=== Pruning old snapshots ==="
-    proxmox-backup-client prune host/macbackup \
+    proxmox-backup-client prune host/macbackupM4 \
         --repository "${PBS_REPOSITORY}" \
         --keep-daily 7 \
         --keep-weekly 4 \
