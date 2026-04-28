@@ -1,0 +1,9 @@
+[Unit]
+Description=Proxmox Backup Server nightly backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/pbs-backup.env
+ExecStart=/usr/local/bin/pbs-backup.sh

@@ -1,15 +1,26 @@
-# Docker PBS Client
+# PBS Client
 
-Minimal Debian Docker container running `proxmox-backup-client` for backing up to a Proxmox Backup Server (4.x).
+Two ways to run `proxmox-backup-client` against a Proxmox Backup Server (4.x):
+
+- **[Docker](#docker-setup)** — minimal Debian container, intended for macOS hosts where the client is not packaged natively. Runs `cron` inside the container.
+- **[Native Linux](#native-linux-setup)** — installer + systemd timer for Linux hosts that can run the deb directly. No Docker required.
+
+Common features:
+- Incremental backups with deduplication
+- Nightly schedule with automatic pruning of old snapshots
+
+---
+
+## Docker setup
+
+Minimal Debian Docker container running `proxmox-backup-client`.
 
 Features:
 - Debian Bookworm slim (~120 MB image)
-- Incremental backups with deduplication
 - Cron scheduling inside the container
-- Automatic pruning of old snapshots
-- macOS artifact exclusions
+- macOS artifact exclusions (`.DS_Store`, `.Spotlight-V100`, etc.)
 
-## Setup
+### Configure
 
 1. Copy the example env and fill in your details:
    ```bash
@@ -34,16 +45,7 @@ Features:
    docker compose up -d --build
    ```
 
-## Finding the PBS fingerprint
-
-On the PBS web UI (`https://<PBS_IP>:8007`), the fingerprint is shown on the **Dashboard**.
-
-Or via the PBS server shell:
-```bash
-proxmox-backup-manager cert info | grep Fingerprint
-```
-
-## Usage
+### Usage
 
 Test connectivity:
 ```bash
@@ -60,10 +62,66 @@ View backup logs:
 docker compose exec pbs-client tail -30 /var/log/pbs-backup/backup.log
 ```
 
-## Optional: Encryption key
+### Optional: Encryption key
 
 ```bash
 docker compose exec pbs-client proxmox-backup-client key create --kdf none
 ```
 
 The key is stored in the persistent `pbs-config` volume and survives container rebuilds.
+
+---
+
+## Native Linux setup
+
+For Linux hosts (Debian/Ubuntu) — installs `proxmox-backup-client` from the official Proxmox apt repo and registers a systemd timer that runs nightly at 02:00.
+
+By default, this layout backs up `/root` and `/home/claude` under the backup-id `contabo-server`. Edit `linux/backup.sh` to change the source paths or backup-id for your host.
+
+### Install
+
+```bash
+sudo bash linux/install.sh
+```
+
+The first run installs the package, drops the script + units, and creates `/etc/pbs-backup.env` (mode 600). Where the env file comes from depends on what's in the repo when you run the installer:
+
+- **If the repo's `.env` already exists** (because you also use the Docker setup, or you copied `.env.example` to `.env` and filled it in), `install.sh` copies it to `/etc/pbs-backup.env` automatically and continues.
+- **If no `.env` is found**, `install.sh` copies `linux/pbs-backup.env.example` to `/etc/pbs-backup.env` and halts. Edit it, then re-run.
+
+The env file accepts either a single `PBS_REPOSITORY=user@realm@host:port:datastore` or the docker-compose-style trio (`PBS_USER`, `PBS_SERVER`, `PBS_DATASTORE`) — `backup.sh` composes the repository string when the trio is set.
+
+Re-run `sudo bash linux/install.sh` to enable and start the timer.
+
+### Usage
+
+Run a backup on demand:
+```bash
+sudo systemctl start pbs-backup.service
+```
+
+Inspect the schedule and recent runs:
+```bash
+systemctl list-timers pbs-backup.timer       # next scheduled run
+journalctl -u pbs-backup.service -n 100      # last run log
+journalctl -u pbs-backup.service -f          # follow live
+```
+
+Test connectivity (after `/etc/pbs-backup.env` is filled in):
+```bash
+set -a; . /etc/pbs-backup.env; set +a
+proxmox-backup-client snapshot list --repository "$PBS_REPOSITORY"
+```
+
+See `linux/README.md` for the full file layout.
+
+---
+
+## Finding the PBS fingerprint
+
+On the PBS web UI (`https://<PBS_IP>:8007`), the fingerprint is shown on the **Dashboard**.
+
+Or via the PBS server shell:
+```bash
+proxmox-backup-manager cert info | grep Fingerprint
+```
